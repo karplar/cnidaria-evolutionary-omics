@@ -1,0 +1,88 @@
+SRR_SAMPLES = [
+    "SRR6312106",
+    "SRR6312107", 
+    "SRR6312104",
+    "SRR6312105",
+    "SRR6312102",
+    "SRR6312103"
+]
+
+KALLISTO_INDEX = "transcriptome.idx"
+DESEQ2_SCRIPT = "deseq2_analysis.R"
+GTF_FILE = "GCF_932526225.1_jaNemVect1.1_genomic.gtf"
+
+rule all:
+    input:
+        expand("fastqc/{srr}_fastqc.html", srr=SRR_SAMPLES),
+        "multiqc_report.html",
+        expand("kallisto/{srr}/abundance.h5", srr=SRR_SAMPLES),
+        "deseq2/deseq2_results.RData",
+        "deseq2/DESeq2_results_24Hpf_vs_48Hpf.csv",
+        "deseq2/DESeq2_results_24Hpf_vs_192Hpf.csv",
+        "deseq2/analysis_summary.csv",
+        "deseq2/pca_plot.png",
+        "deseq2/volcano_24Hpf_vs_48Hpf.png",
+        "deseq2/volcano_24Hpf_vs_192Hpf.png"
+
+# Generate FastQC report
+rule fastqc:
+    input:
+        "raw_data/{srr}.fastq.gz"
+    output:
+        html="fastqc/{srr}_fastqc.html",
+        zip="fastqc/{srr}_fastqc.zip"
+    shell:
+        "fastqc {input} -o fastqc/"
+
+# MultiQC 
+rule multiqc:
+    input:
+        expand("fastqc/{srr}_fastqc.zip", srr=SRR_SAMPLES)
+    output:
+        "multiqc_report.html"
+    shell:
+        "multiqc fastqc/ -o ."
+
+# Pseudoalignment with Kallisto
+rule kallisto_quant:
+    input:
+        fastq="raw_data/{srr}.fastq.gz",
+        index=KALLISTO_INDEX
+    output:
+        "kallisto/{srr}/abundance.h5",
+        "kallisto/{srr}/abundance.tsv"
+    threads: 4
+    shell:
+        """
+        kallisto quant \
+            -i {input.index} \
+            -o kallisto/{wildcards.srr} \
+            --single \
+            -l 50 \
+            -s 2 \
+            --threads {threads} \
+            {input.fastq}
+        """
+
+# DESeq2 analysis
+rule deseq2_analysis:
+    input:
+        count_data = expand("kallisto/{srr}/abundance.tsv", srr=SRR_SAMPLES),
+        script = DESEQ2_SCRIPT
+    output:
+        "deseq2/deseq2_results.RData",
+        "deseq2/DESeq2_results_24Hpf_vs_48Hpf.csv",
+        "deseq2/DESeq2_results_24Hpf_vs_192Hpf.csv",
+        "deseq2/normalized_counts.csv",
+        "deseq2/analysis_summary.csv",
+        "deseq2/pca_plot.png",
+        "deseq2/heatmap_24Hpf_vs_48Hpf.png",
+        "deseq2/heatmap_24Hpf_vs_192Hpf.png",
+        "deseq2/volcano_24Hpf_vs_48Hpf.png",
+        "deseq2/volcano_24Hpf_vs_192Hpf.png"
+    params:
+    params:
+        gtf = GTF_FILE,
+        kallisto_dir = "kallisto"
+    script:
+        DESEQ2_SCRIPT
